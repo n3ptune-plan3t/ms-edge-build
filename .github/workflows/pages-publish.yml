@@ -1,0 +1,46 @@
+name: Publish Arch Repo to GitHub Pages
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git curl tar zstd
+
+      - name: Download package from GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          latest_release=$(curl -s \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            https://api.github.com/repos/${{ github.repository }}/releases/latest)
+          asset_url=$(echo "$latest_release" | grep "browser_download_url" | grep ".pkg.tar.zst" | cut -d '"' -f 4)
+          mkdir -p repo
+          curl -L -o repo/$(basename "$asset_url") "$asset_url"
+
+      - name: Add package to repo database
+        run: |
+          cd repo
+          if [ ! -f ms-edge-build.db.tar.gz ]; then
+            repo-add ms-edge-build.db.tar.gz *.pkg.tar.zst
+          else
+            repo-add ms-edge-build.db.tar.gz *.pkg.tar.zst
+          fi
+          cd ..
+
+      - name: Commit and push to main branch
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+          git add repo/
+          git commit -m "Publish new package to Arch repo"
+          git push origin main
